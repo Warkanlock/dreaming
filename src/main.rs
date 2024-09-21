@@ -13,6 +13,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
     Frame, Terminal,
 };
+
 use std::{
     error::Error,
     io::{self},
@@ -166,7 +167,7 @@ fn run_app<B: Backend>(
                         app.frequency_value = 0;
                         app.input.clear();
                         app.current_dream = Dream {
-                            date: "Today".to_string(),
+                            date: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
                             intensity: Intensity::Low,
                             experience: String::new(),
                             frequency: 0,
@@ -464,15 +465,22 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(format!("Day {}", dream_index + 1))
+            .title(format!("Record {}", dream_index + 1))
             .style(TuiStyle::default().bg(TuiColor::Rgb(0, 0, 50)));
 
         if let Some(dream) = dream {
+            let intensity_color = match dream.intensity {
+                Intensity::Low => TuiColor::Green,
+                Intensity::Medium => TuiColor::Yellow,
+                Intensity::High => TuiColor::Red,
+            };
+
             let content = format!(
-                "{}\nIntensity: {}\nFrequency: {}\nStyle: {}",
+                "Dreamed at:\n{}\n\nIntensity: {}\nFrequency: {}\nStyle: {}",
                 dream.date, dream.intensity, dream.frequency, dream.style
             );
-            let list_item = ListItem::new(content).style(TuiStyle::default().fg(TuiColor::Gray));
+
+            let list_item = ListItem::new(content).style(TuiStyle::default().fg(TuiColor::White).fg(intensity_color));
 
             let mut state = ratatui::widgets::ListState::default();
             if app.selected == dream_index {
@@ -482,6 +490,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             let dream_list = List::new(vec![list_item])
                 .block(block)
                 .highlight_style(TuiStyle::default().add_modifier(Modifier::REVERSED));
+
             f.render_stateful_widget(dream_list, *chunk, &mut state);
         } else {
             let empty_paragraph = Paragraph::new("No Dream")
@@ -624,6 +633,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                 ),
                 _ => ("", ""),
             };
+
             let confirm = Paragraph::new(message)
                 .block(
                     Block::default()
@@ -632,6 +642,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                         .style(TuiStyle::default().bg(TuiColor::Rgb(0, 0, 50))),
                 )
                 .style(TuiStyle::default().fg(TuiColor::Gray));
+
             f.render_widget(confirm, area);
         }
         InputMode::ViewingDream => {
