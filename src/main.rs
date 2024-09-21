@@ -2,7 +2,7 @@ mod dream;
 
 use crate::dream::{Dream, Intensity, Style};
 use crossterm::{
-    event::{self, Event as CEvent, KeyCode},
+    event::{self, Event as CEvent, KeyCode, KeyEvent, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -39,6 +39,12 @@ enum InputField {
     None,
 }
 
+#[derive(Debug,PartialEq,PartialOrd,Clone)]
+struct CursorPosition {
+    x: usize,
+    y: usize,
+}
+
 struct App {
     dreams: Vec<Dream>,
     input_mode: InputMode,
@@ -51,6 +57,7 @@ struct App {
     frequency_value: u8,
     editing_index: Option<usize>,
     unsaved_changes: bool, 
+    cursor_position: CursorPosition,
 }
 
 impl App {
@@ -65,6 +72,7 @@ impl App {
             input_mode: InputMode::Normal,
             input_field: InputField::None,
             input: String::new(),
+            cursor_position: CursorPosition { x: 0, y: 0 },
             current_dream: Dream {
                 date: "N/A".to_string(),
                 intensity: Intensity::Low,
@@ -280,8 +288,13 @@ fn run_app<B: Backend>(
                         }
                         _ => {}
                     },
-                    InputField::Experience => match event.code {
-                        KeyCode::Enter => {
+                    InputField::Experience => match event {
+                        KeyEvent {
+                            code: KeyCode::F(1),
+                            modifiers: KeyModifiers::NONE,
+                            kind: crossterm::event::KeyEventKind::Press,
+                            state: crossterm::event::KeyEventState::NONE,
+                        } => {
                             if app.input.trim().is_empty() {
                                 app.current_dream.experience = "N/A".to_string();
                             } else {
@@ -298,23 +311,73 @@ fn run_app<B: Backend>(
                                     app.visible_start = 0;
                                 }
                             }
+
                             app.input_mode = InputMode::Normal;
                             app.input_field = InputField::None;
                             app.editing_index = None;
                             app.unsaved_changes = true;
                         }
-                        KeyCode::Char(c) => {
-                            app.input.push(c);
+                        KeyEvent {
+                            code: KeyCode::Enter,
+                            modifiers: KeyModifiers::NONE,
+                            kind: crossterm::event::KeyEventKind::Press,
+                            state: crossterm::event::KeyEventState::NONE,
+                        } => {
+                            app.input.insert(app.cursor_position.x,'\n');
+                            app.cursor_position.x += 1;
+                            app.cursor_position.y += 1;
                         }
-                        KeyCode::Backspace => {
-                            app.input.pop();
+                        KeyEvent {
+                            code: KeyCode::Char(c),
+                            ..
+                        } => {
+                            app.input.insert(app.cursor_position.x, c);
+                            app.cursor_position.x += 1;
                         }
-                        KeyCode::Esc => {
+                        KeyEvent {
+                            code: KeyCode::Backspace,
+                            ..
+                        } => {
+                            if app.cursor_position.x > 0 {
+
+                                // check if the cursor is at the beginning of a new line
+                                if app.input.chars().nth(app.cursor_position.x - 1).unwrap() == '\n' {
+                                    app.cursor_position.y -= 1;
+                                }
+
+                                app.input.remove(app.cursor_position.x - 1);
+                                app.cursor_position.x -= 1;
+                            }
+                        }
+                        KeyEvent {
+                            code: KeyCode::Left,
+                            ..
+                        } => {
+                            // move the editing index to the left
+                            if app.cursor_position.x > 0 {
+                                app.cursor_position.x -= 1;
+                            }
+                        }
+                        KeyEvent {
+                            code: KeyCode::Right,
+                            ..
+                        } => {
+                            // move the editing index to the right
+                            if app.cursor_position.x < app.input.len() {
+                                app.cursor_position.x += 1;
+                            }
+                        }
+                        KeyEvent {
+                            code: KeyCode::Esc,
+                            ..
+                        } => {
                             app.input_mode = InputMode::Normal;
                             app.input_field = InputField::None;
                             app.editing_index = None;
+                            app.cursor_position = CursorPosition { x: 0, y: 0 };
                         }
-                        _ => {}
+                        _ => {
+                        }
                     },
                     _ => {}
                 },
@@ -385,7 +448,6 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         )
         .split(size);
 
-    
     let save_status = if app.unsaved_changes {
         Paragraph::new("Changes ●")
             .style(TuiStyle::default().fg(TuiColor::Red))
@@ -474,7 +536,6 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         InputMode::Editing => {
             let area = centered_rect(60, 40, size);
 
-            
             let shadow_area = Rect {
                 x: area.x.saturating_sub(1),
                 y: area.y.saturating_sub(1),
@@ -489,7 +550,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                 InputField::Intensity => "Select the intensity of your dream",
                 InputField::Style => "Select the style",
                 InputField::Frequency => "Set frequency (0-10) (Up/Down)",
-                InputField::Experience => "Describe the experience",
+                InputField::Experience => "Describe the experience (F1 to save)",
                 _ => "",
             };
 
@@ -555,11 +616,10 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                 InputField::Experience => {
                     let input = Paragraph::new(app.input.as_ref())
                         .style(TuiStyle::default().fg(TuiColor::Gray))
-                        .block(input_block);
+                        .block(input_block)
+                        .wrap(ratatui::widgets::Wrap { trim: false });
 
                     f.render_widget(input, area);
-
-                    f.set_cursor(area.x + app.input.len() as u16 + 1, area.y + 1);
                 }
                 _ => {}
             }
@@ -567,7 +627,6 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         InputMode::ConfirmExport | InputMode::ConfirmDelete | InputMode::ConfirmQuit => {
             let area = centered_rect(60, 10, size);
 
-            
             let shadow_area = Rect {
                 x: area.x.saturating_sub(1),
                 y: area.y.saturating_sub(1),
@@ -619,7 +678,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
             if let Some(dream) = app.dreams.get(app.selected) {
                 let content = format!(
-                    "Date: {}\nIntensity: {}\nFrequency: {}\nStyle: {}\nExperience: {}",
+                    "Date: {}\nIntensity: {}\nFrequency: {}\nStyle: {}\nExperience:\n{}",
                     dream.date, dream.intensity, dream.frequency, dream.style, dream.experience
                 );
 
@@ -630,7 +689,8 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                             .title("Dream Details")
                             .style(TuiStyle::default().bg(TuiColor::Rgb(0, 0, 50))),
                     )
-                    .style(TuiStyle::default().fg(TuiColor::Gray));
+                    .style(TuiStyle::default().fg(TuiColor::Gray))
+                    .wrap(ratatui::widgets::Wrap { trim: false });
 
                 f.render_widget(paragraph, area);
             }
