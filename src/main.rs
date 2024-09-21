@@ -50,6 +50,7 @@ struct App {
     selection_index: usize,
     frequency_value: u8,
     editing_index: Option<usize>,
+    unsaved_changes: bool, 
 }
 
 impl App {
@@ -76,6 +77,7 @@ impl App {
             selection_index: 0,
             frequency_value: 0,
             editing_index: None,
+            unsaved_changes: false,
         }
     }
 }
@@ -183,7 +185,7 @@ fn run_app<B: Backend>(
                                 .position(|i| *i == app.current_dream.intensity)
                                 .unwrap_or(0);
                             app.frequency_value = app.current_dream.frequency;
-                            app.input.clear();
+                            app.input = app.current_dream.experience.clone();
                         }
                     }
                     KeyCode::Right => {
@@ -240,7 +242,9 @@ fn run_app<B: Backend>(
                                     app.current_dream.style =
                                         STYLE_OPTIONS[app.selection_index].clone();
                                     app.input_field = InputField::Experience;
-                                    app.input.clear();
+                                    if app.editing_index.is_none() {
+                                        app.input.clear();
+                                    }
                                 }
                                 _ => {}
                             }
@@ -297,6 +301,7 @@ fn run_app<B: Backend>(
                             app.input_mode = InputMode::Normal;
                             app.input_field = InputField::None;
                             app.editing_index = None;
+                            app.unsaved_changes = true;
                         }
                         KeyCode::Char(c) => {
                             app.input.push(c);
@@ -317,6 +322,7 @@ fn run_app<B: Backend>(
                     KeyCode::Char('y') => {
                         export_dreams(&app.dreams)?;
                         app.input_mode = InputMode::Normal;
+                        app.unsaved_changes = false;
                     }
                     KeyCode::Char('n') | KeyCode::Esc => {
                         app.input_mode = InputMode::Normal;
@@ -333,6 +339,7 @@ fn run_app<B: Backend>(
                             if app.visible_start > 0 && app.selected < app.visible_start {
                                 app.visible_start -= 1;
                             }
+                            app.unsaved_changes = true;
                         }
                         app.input_mode = InputMode::Normal;
                     }
@@ -370,24 +377,48 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .direction(Direction::Vertical)
         .constraints(
             [
-                Constraint::Percentage(5),  
+                Constraint::Percentage(5),
                 Constraint::Percentage(85),
-                Constraint::Percentage(10), 
+                Constraint::Percentage(10),
             ]
             .as_ref(),
         )
         .split(size);
 
-    let logo = Paragraph::new("~ Dreaming Tracker ~")
+    
+    let save_status = if app.unsaved_changes {
+        Paragraph::new("Changes ●")
+            .style(TuiStyle::default().fg(TuiColor::Red))
+            .alignment(Alignment::Right)
+    } else {
+        Paragraph::new("Up to date ●")
+            .style(TuiStyle::default().fg(TuiColor::Green))
+            .alignment(Alignment::Right)
+    };
+
+    let logo = Paragraph::new("~ Dreaming Journal ~")
         .block(Block::default())
         .style(
             TuiStyle::default()
                 .fg(TuiColor::Cyan)
-                .add_modifier(Modifier::BOLD),
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(Modifier::ITALIC),
         )
-        .alignment(Alignment::Center);
+        .alignment(Alignment::Left);
 
-    f.render_widget(logo, chunks[0]);
+    let header = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(
+            [
+                Constraint::Percentage(50),
+                Constraint::Percentage(50),
+            ]
+            .as_ref(),
+        )
+        .split(chunks[0]);
+
+    f.render_widget(logo, header[0]);
+    f.render_widget(save_status, header[1]);
 
     let days_constraints = vec![Constraint::Percentage(100 / 7); 7];
 
@@ -427,15 +458,15 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     }
 
     let instructions = Paragraph::new(
-        "Press 'a' to add, 'e' to edit, 'd' to delete, 's' to save, 'q' to quit. Use Left/Right to navigate.",
+        "Press 'a' to add, 'e' to edit, 'd' to delete, 's' to save, 'q' to quit.\nUse Left/Right to navigate.",
     )
     .block(
         Block::default()
             .borders(Borders::ALL)
             .title("Instructions")
-            .style(TuiStyle::default().bg(TuiColor::Rgb(0, 0, 50))),
+            .style(TuiStyle::default().bg(TuiColor::Rgb(100, 216, 230))), 
     )
-    .style(TuiStyle::default().fg(TuiColor::Gray));
+    .style(TuiStyle::default().fg(TuiColor::Black));
 
     f.render_widget(instructions, chunks[2]);
 
@@ -443,6 +474,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         InputMode::Editing => {
             let area = centered_rect(60, 40, size);
 
+            
             let shadow_area = Rect {
                 x: area.x.saturating_sub(1),
                 y: area.y.saturating_sub(1),
@@ -456,7 +488,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             let input_field_title = match app.input_field {
                 InputField::Intensity => "Select Intensity",
                 InputField::Style => "Select Style",
-                InputField::Frequency => "Set Frequency (0-10) (Up/Down)",
+                InputField::Frequency => "Set Frequency (0-10)",
                 InputField::Experience => "Describe Experience",
                 _ => "",
             };
@@ -535,6 +567,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         InputMode::ConfirmExport | InputMode::ConfirmDelete | InputMode::ConfirmQuit => {
             let area = centered_rect(60, 10, size);
 
+            
             let shadow_area = Rect {
                 x: area.x.saturating_sub(1),
                 y: area.y.saturating_sub(1),
@@ -546,9 +579,18 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
             f.render_widget(Clear, area);
             let (title, message) = match app.input_mode {
-                InputMode::ConfirmExport => ("Confirm Export", "Are you sure you want to export? (y/n)"),
-                InputMode::ConfirmDelete => ("Confirm Delete", "Are you sure you want to delete this dream? (y/n)"),
-                InputMode::ConfirmQuit => ("Confirm Quit", "Are you sure you want to quit? (y/n)"),
+                InputMode::ConfirmExport => (
+                    "Confirm Save",
+                    "Are you sure you want to save? (y/n)",
+                ),
+                InputMode::ConfirmDelete => (
+                    "Confirm Delete",
+                    "Are you sure you want to delete this dream? (y/n)",
+                ),
+                InputMode::ConfirmQuit => (
+                    "Confirm Quit",
+                    "Are you sure you want to quit? (y/n)",
+                ),
                 _ => ("", ""),
             };
             let confirm = Paragraph::new(message)
