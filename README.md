@@ -3,6 +3,7 @@
 An interactive, terminal-based dream journal application built in Rust. Record, edit, and track your dreams with an intuitive Text User Interface (TUI).
 
 ![Dreaming TUI Screenshot](screenshots/demo.mov)
+![demo](https://github.com/user-attachments/assets/f4036e32-ca2c-4faa-9291-747c379a895c)
 
 ## Features
 
