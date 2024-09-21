@@ -396,7 +396,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             .alignment(Alignment::Right)
     };
 
-    let logo = Paragraph::new("~ Dreaming Journal ~")
+    let logo = Paragraph::new("Dreaming Journal")
         .block(Block::default())
         .style(
             TuiStyle::default()
@@ -486,10 +486,10 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
             f.render_widget(Clear, area);
             let input_field_title = match app.input_field {
-                InputField::Intensity => "Select Intensity",
-                InputField::Style => "Select Style",
-                InputField::Frequency => "Set Frequency (0-10)",
-                InputField::Experience => "Describe Experience",
+                InputField::Intensity => "Select the intensity of your dream",
+                InputField::Style => "Select the style",
+                InputField::Frequency => "Set frequency (0-10) (Up/Down)",
+                InputField::Experience => "Describe the experience",
                 _ => "",
             };
 
