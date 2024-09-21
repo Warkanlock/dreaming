@@ -668,6 +668,6 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 
 fn export_dreams(dreams: &Vec<Dream>) -> Result<(), Box<dyn Error>> {
     let serialized = serde_json::to_string_pretty(dreams)?;
-    std::fs::write("dreams_export.json", serialized)?;
+    std::fs::write("dreams.json", serialized)?;
     Ok(())
 }
