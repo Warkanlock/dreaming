@@ -45,6 +45,8 @@ struct CursorPosition {
     y: usize,
 }
 
+const DREAM_FILE: &str = "dreams_export.json";
+
 struct App {
     dreams: Vec<Dream>,
     input_mode: InputMode,
@@ -57,12 +59,11 @@ struct App {
     frequency_value: u8,
     editing_index: Option<usize>,
     unsaved_changes: bool, 
-    cursor_position: CursorPosition,
 }
 
 impl App {
     fn new() -> App {
-        let dreams = match std::fs::read_to_string("dreams_export.json") {
+        let dreams = match std::fs::read_to_string(DREAM_FILE) {
             Ok(data) => serde_json::from_str(&data).unwrap_or_else(|_| Vec::new()),
             Err(_) => Vec::new(),
         };
@@ -72,7 +73,6 @@ impl App {
             input_mode: InputMode::Normal,
             input_field: InputField::None,
             input: String::new(),
-            cursor_position: CursorPosition { x: 0, y: 0 },
             current_dream: Dream {
                 date: "N/A".to_string(),
                 intensity: Intensity::Low,
@@ -323,49 +323,19 @@ fn run_app<B: Backend>(
                             kind: crossterm::event::KeyEventKind::Press,
                             state: crossterm::event::KeyEventState::NONE,
                         } => {
-                            app.input.insert(app.cursor_position.x,'\n');
-                            app.cursor_position.x += 1;
-                            app.cursor_position.y += 1;
+                            app.input.push('\n');
                         }
                         KeyEvent {
                             code: KeyCode::Char(c),
                             ..
                         } => {
-                            app.input.insert(app.cursor_position.x, c);
-                            app.cursor_position.x += 1;
+                            app.input.push(c);
                         }
                         KeyEvent {
                             code: KeyCode::Backspace,
                             ..
                         } => {
-                            if app.cursor_position.x > 0 {
-
-                                // check if the cursor is at the beginning of a new line
-                                if app.input.chars().nth(app.cursor_position.x - 1).unwrap() == '\n' {
-                                    app.cursor_position.y -= 1;
-                                }
-
-                                app.input.remove(app.cursor_position.x - 1);
-                                app.cursor_position.x -= 1;
-                            }
-                        }
-                        KeyEvent {
-                            code: KeyCode::Left,
-                            ..
-                        } => {
-                            // move the editing index to the left
-                            if app.cursor_position.x > 0 {
-                                app.cursor_position.x -= 1;
-                            }
-                        }
-                        KeyEvent {
-                            code: KeyCode::Right,
-                            ..
-                        } => {
-                            // move the editing index to the right
-                            if app.cursor_position.x < app.input.len() {
-                                app.cursor_position.x += 1;
-                            }
+                            app.input.pop();
                         }
                         KeyEvent {
                             code: KeyCode::Esc,
@@ -374,7 +344,6 @@ fn run_app<B: Backend>(
                             app.input_mode = InputMode::Normal;
                             app.input_field = InputField::None;
                             app.editing_index = None;
-                            app.cursor_position = CursorPosition { x: 0, y: 0 };
                         }
                         _ => {
                         }
@@ -492,10 +461,12 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     for (i, chunk) in days_chunks.iter().enumerate() {
         let dream_index = app.visible_start + i;
         let dream = app.dreams.get(dream_index);
+
         let block = Block::default()
             .borders(Borders::ALL)
             .title(format!("Day {}", dream_index + 1))
             .style(TuiStyle::default().bg(TuiColor::Rgb(0, 0, 50)));
+
         if let Some(dream) = dream {
             let content = format!(
                 "{}\nIntensity: {}\nFrequency: {}\nStyle: {}",
@@ -507,6 +478,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             if app.selected == dream_index {
                 state.select(Some(0));
             }
+
             let dream_list = List::new(vec![list_item])
                 .block(block)
                 .highlight_style(TuiStyle::default().add_modifier(Modifier::REVERSED));
@@ -728,6 +700,6 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 
 fn export_dreams(dreams: &Vec<Dream>) -> Result<(), Box<dyn Error>> {
     let serialized = serde_json::to_string_pretty(dreams)?;
-    std::fs::write("dreams.json", serialized)?;
+    std::fs::write(DREAM_FILE, serialized)?;
     Ok(())
 }
